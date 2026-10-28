@@ -34,7 +34,7 @@ Images are pulled with the prefix `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/dock
 
 | Directory | What it runs | Call after it is up |
 | --- | --- | --- |
-| `saga-annotation-sample` | Saga annotation commit and rollback. The process then exits. | Logs contain `Committed` and `Rollbacked`. |
+| `saga-annotation-sample` | Dubbo Saga annotation. Payment and stock are separate services and databases. | `curl localhost:8088/purchase/commit` and `curl localhost:8088/purchase/rollback` |
 | `saga-statemachine-sample/spring-seata-saga` | Saga state machine. | Logs contain the state-machine result. |
 | `saga-statemachine-sample/spring-seata-dubbo-saga` | Saga state machine over Dubbo. | Provider stays up. Consumer runs the demo. |
 | `at-sample/at-api` | AT API, MySQL. | Process runs the purchase flow. |

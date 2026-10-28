@@ -30,15 +30,100 @@ services:
       retries: 30
       start_period: 30s
 
-  saga-annotation-sample:
+  mysql:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:5.7
+    hostname: mysqlAddress
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: seata_pay
+      MYSQL_USER: user
+      MYSQL_PASSWORD: "123456"
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  zookeeper:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/zookeeper:3.8.4
+    hostname: zookeeper
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/2181; echo ruok >&3; timeout 2 cat <&3 | grep imok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  saga-annotation-payment:
     build:
       context: ..
       dockerfile: saga-annotation-sample/Dockerfile
+      args:
+        MODULE: saga-annotation-payment
+        JAR_NAME: saga-annotation-payment
     depends_on:
+      mysql:
+        condition: service_healthy
       seata:
         condition: service_healthy
+      zookeeper:
+        condition: service_healthy
     environment:
-      E2E_ENV: open
+      MYSQL_HOST: mysqlAddress
+      MYSQL_USER: user
+      MYSQL_PASSWORD: "123456"
       SEATA_SERVER_ADDR: seata:8091
+      ZOOKEEPER_HOST: zookeeper
     restart: on-failure
 
+  saga-annotation-stock:
+    build:
+      context: ..
+      dockerfile: saga-annotation-sample/Dockerfile
+      args:
+        MODULE: saga-annotation-stock
+        JAR_NAME: saga-annotation-stock
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysqlAddress
+      MYSQL_USER: user
+      MYSQL_PASSWORD: "123456"
+      SEATA_SERVER_ADDR: seata:8091
+      ZOOKEEPER_HOST: zookeeper
+    restart: on-failure
+
+  saga-annotation-business:
+    build:
+      context: ..
+      dockerfile: saga-annotation-sample/Dockerfile
+      args:
+        MODULE: saga-annotation-business
+        JAR_NAME: saga-annotation-business
+    ports:
+      - "8088:8088"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+      saga-annotation-payment:
+        condition: service_started
+      saga-annotation-stock:
+        condition: service_started
+    environment:
+      SEATA_SERVER_ADDR: seata:8091
+      ZOOKEEPER_HOST: zookeeper
+    restart: on-failure

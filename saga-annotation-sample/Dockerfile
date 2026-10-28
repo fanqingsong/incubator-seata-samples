@@ -15,23 +15,32 @@
 
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/maven:3.9.9-eclipse-temurin-8 AS build
 
+ARG MODULE
+ARG JAR_NAME
+
 WORKDIR /build
 
 RUN mkdir -p /root/.m2 && printf '%s\n' \
     '<settings><mirrors><mirror><id>aliyun</id><mirrorOf>*</mirrorOf><url>https://maven.aliyun.com/repository/public</url></mirror></mirrors></settings>' \
     > /root/.m2/settings.xml
 
-COPY pom.xml .
+COPY pom.xml pom.xml
 COPY saga-annotation-sample/pom.xml saga-annotation-sample/pom.xml
-COPY saga-annotation-sample/src saga-annotation-sample/src
-COPY saga-annotation-sample/e2e-replace/file.conf saga-annotation-sample/src/main/resources/file.conf
+COPY saga-annotation-sample/saga-annotation-api saga-annotation-sample/saga-annotation-api
+COPY saga-annotation-sample/saga-annotation-payment saga-annotation-sample/saga-annotation-payment
+COPY saga-annotation-sample/saga-annotation-stock saga-annotation-sample/saga-annotation-stock
+COPY saga-annotation-sample/saga-annotation-business saga-annotation-sample/saga-annotation-business
 
-RUN mvn -B -pl saga-annotation-sample -am package -DskipTests
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn -B -pl "saga-annotation-sample/${MODULE}" -am package -DskipTests \
+    && jar="$(find "saga-annotation-sample/${MODULE}/target" -maxdepth 1 -type f -name "${JAR_NAME}-*.jar" ! -name '*.original' ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -n 1)" \
+    && test -n "$jar" \
+    && cp "$jar" /tmp/app.jar
 
 FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/eclipse-temurin:8-jre
 
 WORKDIR /app
 
-COPY --from=build /build/saga-annotation-sample/target/saga-annotation-sample-2.3.0.jar app.jar
+COPY --from=build /tmp/app.jar app.jar
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Dfile.encoding=UTF-8", "-jar", "app.jar"]

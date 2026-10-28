@@ -17,119 +17,88 @@
 
 # saga-annotation-sample
 
-单进程的注解式 Saga。两个本地参与者用 `@CompensationBusinessAction` 加入同一个全局事务。没有状态机 JSON，没有业务库，也没有 RPC。
+用 Dubbo 把注解式 Saga 拆成两个参与者。支付服务只写 `seata_pay.payment`，库存服务只写 `seata_stock.stock`。业务服务没有自己的表，它负责开启全局事务，并通过 Dubbo 调用这两个参与者。
 
-先把名字理顺，否则会把它读成 TCC：
+一次购买：用户 `U100001` 买 2 件商品 `C00321`，单价 100，所以支付扣 200，库存扣 2。每次请求开始前都会把两张表重置为余额 1000、库存 100。
 
-| 你在代码里看到的 | 在本示例里实际是 |
-| --- | --- |
-| `commit(...)` | Saga 的正向动作。业务一调用就执行完，不是 TCC 的二阶段 Confirm |
-| `rollback(...)` | 补偿动作。只有全局事务失败时，由 Seata 回调 |
-| 日志里的 `prepare` | 沿用 TCC 示例的打印文案，不代表还有 Try 阶段 |
-| 类上的 `@LocalTCC` | 沿用 TCC 示例的类标记。本示例真正注册分支的是 `@CompensationBusinessAction` |
+## 和 TCC 的差别
 
-TCC 是 Try、Confirm、Cancel 三步：业务只调用 Try，成功后再由 Seata 调用 Confirm。注解式 Saga 只有两步。正向方法自己就是业务提交；全局事务成功时 Seata 什么都不再调用；失败时按登记顺序的反方向调用补偿方法。
+正向方法一调用就在自己的数据库里提交。全局事务成功时，Seata 不会再回调。全局事务失败时，Seata 按登记的反序调用补偿方法，把已经提交的本地修改加回去。
 
-## 一次成功提交
+数据源代理是关掉的（`seata.enable-auto-data-source-proxy=false`）。否则 Seata 会按 AT 再记一份 `undo_log`，回滚时退两次款。
 
-`Main` 启动 Spring 后调用 `SagaTransactionService.doTransactionCommit()`。这个方法上有 `@GlobalTransactional`，进入时向 TC 开启全局事务并得到 XID。
+## 三个进程
 
-```mermaid
-sequenceDiagram
-    participant Main
-    participant TM as SagaTransactionService
-    participant TC as Seata Server
-    participant One as SagaActionOneImpl
-    participant Two as SagaActionTwoImpl
+| 进程 | 角色 | 数据 |
+| --- | --- | --- |
+| `saga-annotation-business` | 事务发起方，端口 8088 | 无 |
+| `saga-annotation-payment` | Dubbo 参与者 `paymentSaga` | 库 `seata_pay`，表 `payment` |
+| `saga-annotation-stock` | Dubbo 参与者 `stockSaga` | 库 `seata_stock`，表 `stock` |
 
-    Main->>TM: doTransactionCommit()
-    Note over TM: @GlobalTransactional 开启全局事务
-    TM->>One: commit(null, 1)
-    Note over One: 拦截器注册分支 DubboSagaActionOne，再执行方法体
-    TM->>Two: commit(null, "two", ["c1","c2"])
-    Note over Two: 拦截器注册分支 DubboTccActionTwo，再执行方法体
-    TM-->>Main: 返回 XID，方法正常结束
-    Note over TC: 全局提交。Saga 没有 Confirm，补偿方法不会被调用
-```
+Dubbo 注册中心是 ZooKeeper。Seata 的 Dubbo Filter 把 XID 带到提供方线程。提供方上的 `@CompensationBusinessAction` 向事务协调器登记分支。
 
-方法体只做了三件事：调用参与者一的正向方法，调用参与者二的正向方法，返回当前 XID。两个调用都返回 `true`，方法正常结束，Seata 提交全局事务。补偿方法不会执行。
+`PaymentDubboService` 只做远程入口，真正带注解的是 `PaymentSagaAction`。库存侧同样分成 `StockDubboService` 和 `StockSagaAction`。这样 Dubbo 进来的调用会再进一次 Spring 代理，分支才会登记。补偿方法不暴露成 Dubbo 接口，由协调器在回滚时直接回调提供方进程。
 
-业务代码传入的第一个参数是 `null`。Seata 拦截这次调用时会自己创建 `BusinessActionContext`，所以方法体里的 `actionContext.getXid()` 有值。拦截器先向 TC 登记分支，再进入方法体。分支名来自注解：参与者一是 `DubboSagaActionOne`，参与者二是 `DubboTccActionTwo`。`compensationMethod = "rollback"` 告诉 TC，这个分支失败时要回调哪个方法。
+## 提交
 
-## 一次失败补偿
-
-`Main` 接着用 API 再开一个全局事务，然后调用 `doTransactionRollback()`。
+`GET /purchase/commit` 调用 `SagaPurchaseService.commitPurchase()`。这个方法上有 `@GlobalTransactional`。
 
 ```mermaid
 sequenceDiagram
-    participant Main
-    participant TM as SagaTransactionService
+    participant Biz as business
     participant TC as Seata Server
-    participant One as SagaActionOneImpl
-    participant Two as SagaActionTwoImpl
+    participant Pay as payment
+    participant Stock as stock
 
-    Main->>TC: GlobalTransaction.begin()
-    Main->>TM: doTransactionRollback()
-    Note over TM: 线程上已有 XID，@GlobalTransactional 加入该事务，不再新开
-    TM->>One: commit(null, 1)
-    TM->>Two: commit(null, "two", ["c1","c2"])
-    TM-->>Main: 抛出 transaction rollback
-    Main->>TC: globalTransaction.rollback()
-    TC->>Two: rollback(context)
-    TC->>One: rollback(context)
+    Biz->>TC: 开启全局事务
+    Biz->>Pay: Dubbo debit(U100001, 200)
+    Note over Pay: seata_pay.payment 1000 减到 800，本地已提交
+    Pay-->>TC: 登记分支 paymentSaga
+    Biz->>Stock: Dubbo deduct(C00321, 2)
+    Note over Stock: seata_stock.stock 100 减到 98，本地已提交
+    Stock-->>TC: 登记分支 stockSaga
+    Biz->>TC: 方法正常返回，全局提交
+    Note over TC: 不调用补偿
 ```
 
-`doTransactionRollback()` 同样标了 `@GlobalTransactional`，默认传播行为是加入已有事务。`Main` 已经 `begin()`，所以这个方法是参与者，不是发起者。它把两个正向动作又跑一遍，然后主动抛出 `transaction rollback`。异常抛回 `Main` 的 `catch`，由 `Main` 调用 `globalTransaction.rollback()`。TC 按登记的反序回调两个 `rollback`：先参与者二，再参与者一。
+返回类似：
 
-发起者放在 `Main` 里，是为了让样例在正向动作已经执行之后，显式触发全局回滚，并在回滚请求返回后继续等待。如果只靠 `@GlobalTransactional` 方法自己抛异常，拦截器也会回滚，只是回滚时机包在注解里，样例就看不出“谁在调用补偿”。
-
-## 补偿方法怎么拿到当初的参数
-
-补偿不是当初那次 Java 调用的继续，Seata 之后用新的 `BusinessActionContext` 回调 `rollback`。正向方法上的 `@BusinessActionContextParameter` 负责把参数存进上下文，补偿方法再用名字取回来。
-
-参与者一：
-
-```33:44:saga-annotation-sample/src/main/java/org/apache/seata/action/impl/SagaActionOneImpl.java
-    public boolean commit(BusinessActionContext actionContext,@BusinessActionContextParameter(paramName = "a") int a) {
-        // ...
-    }
-
-    public boolean rollback(BusinessActionContext actionContext) {
-        Object a =  actionContext.getActionContext("a");
-        // ...
-    }
+```text
+提交 xid=...
+seata_pay.payment userId=U100001 balance 1000 -> 800
+seata_stock.stock commodityCode=C00321 count 100 -> 98
 ```
 
-`paramName = "a"` 把整数 `1` 记到上下文。`rollback` 没有业务参数，只能 `getActionContext("a")`。
+## 回滚
 
-参与者二有两个参数。`b` 整段保存，值是 `"two"`。`c` 是 `List`，注解写了 `index = 1`，所以存进上下文的不是整个列表，而是下标 1 的元素 `"c2"`。正向方法里 `list.get(1)` 读的是同一次调用的原始列表；补偿方法里 `getActionContext("c")` 读到的是当初抽出来的 `"c2"`。
+`GET /purchase/rollback` 走同一组正向调用。两次扣减都在各自库里提交之后，业务方法抛出 `SagaRollbackSignal`。`@GlobalTransactional` 通知协调器回滚。协调器先补偿库存，再补偿支付。补偿方法从 `BusinessActionContext` 取出当初的 `userId`、`amount`、`commodityCode`、`count`，执行相反的 `UPDATE`。
 
-## Main 为什么要等一个 Future
+```text
+回滚 xid=...
+seata_pay.payment userId=U100001 balance 1000 -> 1000
+seata_stock.stock commodityCode=C00321 count 100 -> 100
+```
 
-`ResultHolder` 按 XID 保存参与者二的 `CompletableFuture`。正向方法里创建它、放进去，并立刻 `complete(null)`。补偿方法再按同一个 XID 取出来，再 `complete` 一次。`Main` 两段流程都 `get(10, TimeUnit.SECONDS)`。
+接口返回前，全局回滚已经结束，所以这里读到的是补偿之后的值。提供方日志里能看到中间的 `1000 -> 800` 和 `100 -> 98`，以及补偿时加回去的那两行。
 
-成功路径上，Future 在正向方法返回前就已经完成，这次等待会马上返回。失败路径上，正向方法同样已经把它完成了，补偿里的第二次 `complete` 不会再改变结果，`Main` 也不是在等补偿结束。它的作用是让进程在参与者二的正向方法跑完之前不要退出。补偿日志来自 `rollback()` 调用 TC 时的同步回调，不依赖这个 Future。
-
-## 跑起来看什么
+## 运行
 
 ```bash
 docker compose up --build
-docker compose logs -f saga-annotation-sample
+curl http://127.0.0.1:8088/purchase/commit
+curl http://127.0.0.1:8088/purchase/rollback
 docker compose down
 ```
 
-`application.yml` 用 `SEATA_SERVER_ADDR` 连接 TC，默认 `127.0.0.1:8091`。Compose 把它设为 `seata:8091`。
+MySQL 映射了 `3306`，用户 `user`，密码 `123456`。可以直接查看两张表：
 
-成功路径打印两行正向日志后结束：
-
-```text
-TccActionOne prepare, xid:..., a:1
-TccActionTwo prepare, xid:..., b:two, c:c2
+```sql
+SELECT user_id, balance FROM seata_pay.payment;
+SELECT commodity_code, `count` FROM seata_stock.stock;
 ```
 
-失败路径会再打印这两行，然后打印补偿。参与者一的补偿日志文案仍是 `prepare`，参与者二才打印 `rollback`：
+提供方日志：
 
-```text
-TccActionOne prepare, xid:..., a:1
-TccActionTwo rollback, xid:..., b:two, c:c2
+```bash
+docker compose logs -f saga-annotation-payment saga-annotation-stock
 ```
