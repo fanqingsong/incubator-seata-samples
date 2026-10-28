@@ -52,7 +52,7 @@ jobs:
 
     - name: Build
       run: |
-        directories=("at-sample" "saga-sample" "tcc-sample" "xa-sample")
+        directories=("at-sample" "saga-statemachine-sample" "tcc-sample" "xa-sample")
         for dir in "${directories[@]}"; do
           for subdir in "$dir"/*; do
             if [ -d "$subdir" ]; then

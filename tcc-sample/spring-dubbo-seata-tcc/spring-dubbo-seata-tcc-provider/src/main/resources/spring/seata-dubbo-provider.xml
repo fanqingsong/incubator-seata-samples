@@ -39,9 +39,53 @@
     <dubbo:provider timeout="10000" threads="10" threadpool="fixed" loadbalance="roundrobin"/>
 
 
-    <bean id="tccActionOneImpl" class="org.apache.seata.action.impl.TccActionOneImpl"/>
+    <bean class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer"/>
 
-    <bean id="tccActionTwoImpl" class="org.apache.seata.action.impl.TccActionTwoImpl"/>
+    <bean id="accountDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_account?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
+        <property name="username" value="${mysql.user:user}"/>
+        <property name="password" value="${mysql.password:123456}"/>
+    </bean>
+
+    <bean id="stockDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_storage?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
+        <property name="username" value="${mysql.user:user}"/>
+        <property name="password" value="${mysql.password:123456}"/>
+    </bean>
+
+    <bean id="accountJdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <constructor-arg ref="accountDataSource"/>
+    </bean>
+
+    <bean id="stockJdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <constructor-arg ref="stockDataSource"/>
+    </bean>
+
+    <bean id="accountTccStore" class="org.apache.seata.action.impl.ResourceTccStore" init-method="checkConnection">
+        <constructor-arg ref="accountJdbcTemplate"/>
+        <constructor-arg value="account_tbl"/>
+        <constructor-arg value="account_tx"/>
+        <constructor-arg value="user_id"/>
+        <constructor-arg value="money"/>
+    </bean>
+
+    <bean id="stockTccStore" class="org.apache.seata.action.impl.ResourceTccStore" init-method="checkConnection">
+        <constructor-arg ref="stockJdbcTemplate"/>
+        <constructor-arg value="stock_tbl"/>
+        <constructor-arg value="stock_tx"/>
+        <constructor-arg value="commodity_code"/>
+        <constructor-arg value="count"/>
+    </bean>
+
+    <bean id="tccActionOneImpl" class="org.apache.seata.action.impl.TccActionOneImpl">
+        <constructor-arg ref="accountTccStore"/>
+    </bean>
+
+    <bean id="tccActionTwoImpl" class="org.apache.seata.action.impl.TccActionTwoImpl">
+        <constructor-arg ref="stockTccStore"/>
+    </bean>
 
     <!-- 第一个TCC 参与者服务发布 -->
     <dubbo:service interface="org.apache.seata.action.TccActionOne" ref="tccActionOneImpl"/>

@@ -19,8 +19,11 @@ package org.apache.seata;
 import org.apache.curator.test.TestingServer;
 import org.apache.seata.common.util.StringUtils;
 import org.apache.seata.service.TccTransactionService;
+import org.apache.seata.spring.boot.autoconfigure.SeataSpringFenceAutoConfiguration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.context.ApplicationContext;
 import org.springframework.util.Assert;
 
@@ -29,7 +32,11 @@ import java.io.IOException;
 import static org.apache.seata.e2e.E2EUtil.isInE2ETest;
 import static org.apache.seata.e2e.E2EUtil.writeE2EResFile;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {
+    DataSourceAutoConfiguration.class,
+    DataSourceTransactionManagerAutoConfiguration.class,
+    SeataSpringFenceAutoConfiguration.class
+})
 public class SofaRPCTccTransactionApplication {
 
     private static TestingServer server;
@@ -73,8 +80,12 @@ public class SofaRPCTccTransactionApplication {
     }
 
     private static void transactionCommitDemo() throws InterruptedException {
+        System.out.println("before commit: " + tccTransactionService.snapshot());
+        int[] accountBefore = tccTransactionService.readAccount();
+        int[] stockBefore = tccTransactionService.readStock();
         String txId = tccTransactionService.doTransactionCommit();
         System.out.println(txId);
+        tccTransactionService.assertConfirmed(accountBefore, stockBefore);
         Assert.isTrue(StringUtils.isNotBlank(txId), "事务开启失败");
 
         //wait commit
@@ -89,12 +100,23 @@ public class SofaRPCTccTransactionApplication {
     }
 
     private static void transactionRollbackDemo() throws InterruptedException {
+        int[] accountBefore = tccTransactionService.readAccount();
+        int[] stockBefore = tccTransactionService.readStock();
         try {
             tccTransactionService.doTransactionRollback();
             Assert.isTrue(false, "分布式事务未回滚");
         } catch (Throwable t) {
-            Assert.isTrue(true, "分布式事务异常回滚");
+            if (!hasMessage(t, "transaction rollback")) {
+                if (t instanceof RuntimeException) {
+                    throw (RuntimeException) t;
+                }
+                if (t instanceof Error) {
+                    throw (Error) t;
+                }
+                throw new RuntimeException(t);
+            }
         }
+        tccTransactionService.assertCancelled(accountBefore, stockBefore);
 
         //wait rollback
         Thread.sleep(3000);
@@ -104,5 +126,14 @@ public class SofaRPCTccTransactionApplication {
             writeE2EResFile(res, "rollback.yaml");
         }
         System.out.println("transaction rollback demo finish.");
+    }
+
+    private static boolean hasMessage(Throwable error, String expected) {
+        for (Throwable cursor = error; cursor != null; cursor = cursor.getCause()) {
+            if (cursor.getMessage() != null && cursor.getMessage().contains(expected)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

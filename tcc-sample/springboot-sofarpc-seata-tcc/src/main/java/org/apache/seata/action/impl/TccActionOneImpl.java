@@ -23,6 +23,7 @@ import org.apache.seata.rm.tcc.api.BusinessActionContextParameter;
 import org.apache.seata.rm.tcc.api.TwoPhaseBusinessAction;
 import org.apache.seata.action.ResultHolder;
 import org.apache.seata.action.TccActionOne;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 
@@ -30,11 +31,20 @@ import org.springframework.util.Assert;
 @Service
 public class TccActionOneImpl implements TccActionOne {
 
+    public static final String USER_ID = "U100001";
+
+    private final ResourceTccStore accountStore;
+
+    public TccActionOneImpl(@Qualifier("accountTccStore") ResourceTccStore accountStore) {
+        this.accountStore = accountStore;
+    }
+
     @Override
     @TwoPhaseBusinessAction(name = "SofaTccActionOne", commitMethod = "commit", rollbackMethod = "rollback")
-    public boolean prepare(BusinessActionContext actionContext,@BusinessActionContextParameter(paramName = "a") int a) {
+    public boolean prepare(BusinessActionContext actionContext, @BusinessActionContextParameter(paramName = "a") int a) {
         String xid = actionContext.getXid();
-        System.out.println("TccActionOne prepare, xid:" + xid + ", a:" + a);
+        accountStore.tryReserve(xid, USER_ID, a);
+        System.out.println("TccActionOne prepare, xid:" + xid + ", a:" + a + ", account:[" + accountStore.describe(USER_ID) + "]");
         return true;
     }
 
@@ -42,7 +52,9 @@ public class TccActionOneImpl implements TccActionOne {
     public boolean commit(BusinessActionContext actionContext) {
         String xid = actionContext.getXid();
         Assert.isTrue(actionContext.getActionContext("a") != null);
-        System.out.println("TccActionOne commit, xid:" + xid + ", a:" + actionContext.getActionContext("a"));
+        accountStore.confirm(xid);
+        System.out.println("TccActionOne commit, xid:" + xid + ", a:" + actionContext.getActionContext("a")
+            + ", account:[" + accountStore.describe(USER_ID) + "]");
         ResultHolder.setActionOneResult(xid, "T");
         return true;
     }
@@ -51,7 +63,9 @@ public class TccActionOneImpl implements TccActionOne {
     public boolean rollback(BusinessActionContext actionContext) {
         String xid = actionContext.getXid();
         Assert.isTrue(actionContext.getActionContext("a") != null);
-        System.out.println("TccActionOne rollback, xid:" + xid + ", a:" + actionContext.getActionContext("a"));
+        accountStore.cancel(xid);
+        System.out.println("TccActionOne rollback, xid:" + xid + ", a:" + actionContext.getActionContext("a")
+            + ", account:[" + accountStore.describe(USER_ID) + "]");
         ResultHolder.setActionOneResult(xid, "R");
         return true;
     }

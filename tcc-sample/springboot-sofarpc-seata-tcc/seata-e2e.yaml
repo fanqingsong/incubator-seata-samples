@@ -35,10 +35,32 @@ e2e:
           depends_on:
             seata-server:
               condition: service_started
+            mysql:
+              condition: service_healthy
           environment:
             E2E_ENV: open
+            mysql.address: mysqlAddress
+            mysql.user: user
+            mysql.password: "123456"
     # infrastructure services
     infrastructures:
+      - name: mysql
+        docker_service:
+          hostname: mysqlAddress
+          image: mysql:5.7
+          volumes:
+            - ./e2e-files/sqlsh:/docker-entrypoint-initdb.d
+          restart: always
+          environment:
+            MYSQL_ROOT_PASSWORD: "123456"
+            MYSQL_DATABASE: tcc_account
+            MYSQL_USER: user
+            MYSQL_PASSWORD: "123456"
+          healthcheck:
+            test: '[ "CMD", "mysqladmin" ,"ping", "-h", "localhost", "-uroot", "-p123456" ]'
+            interval: 5s
+            timeout: 10s
+            retries: 10
       - name: seata-server
         docker_service:
           hostname: seata

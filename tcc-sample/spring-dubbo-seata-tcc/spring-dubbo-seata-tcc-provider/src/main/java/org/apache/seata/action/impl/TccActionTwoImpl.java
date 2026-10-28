@@ -34,10 +34,13 @@ public class TccActionTwoImpl implements TccActionTwo {
 
     @Override
     @TwoPhaseBusinessAction(name = "DubboTccActionTwo", commitMethod = "commit", rollbackMethod = "rollback")
-    public boolean prepare(BusinessActionContext actionContext,  @BusinessActionContextParameter(paramName = "b") String b,
+    public boolean prepare(BusinessActionContext actionContext, @BusinessActionContextParameter(paramName = "b") String b,
                            @BusinessActionContextParameter(paramName = "c", index = 1) List list) {
         String xid = actionContext.getXid();
-        System.out.println("TccActionTwo prepare, xid:" + xid + ", b:" + b + ", c:" + list.get(1));
+        int count = Integer.parseInt(String.valueOf(list.get(1)));
+        stockStore.tryReserve(xid, b, count);
+        System.out.println("TccActionTwo prepare, xid:" + xid + ", b:" + b + ", c:" + list.get(1)
+            + ", stock:[" + stockStore.describe(b) + "]");
         return true;
     }
 
@@ -46,9 +49,10 @@ public class TccActionTwoImpl implements TccActionTwo {
         String xid = actionContext.getXid();
         Assert.isTrue(actionContext.getActionContext("b") != null);
         Assert.isTrue(actionContext.getActionContext("c") != null);
-        System.out.println(
-            "TccActionTwo commit, xid:" + xid + ", b:" + actionContext.getActionContext("b") + ", c:" + actionContext
-                .getActionContext("c"));
+        String commodityCode = String.valueOf(actionContext.getActionContext("b"));
+        stockStore.confirm(xid);
+        System.out.println("TccActionTwo commit, xid:" + xid + ", b:" + commodityCode + ", c:"
+            + actionContext.getActionContext("c") + ", stock:[" + stockStore.describe(commodityCode) + "]");
         ResultHolder.setActionTwoResult(xid, "T");
         return true;
     }
@@ -58,11 +62,17 @@ public class TccActionTwoImpl implements TccActionTwo {
         String xid = actionContext.getXid();
         Assert.isTrue(actionContext.getActionContext("b") != null);
         Assert.isTrue(actionContext.getActionContext("c") != null);
-        System.out.println(
-            "TccActionTwo rollback, xid:" + xid + ", b:" + actionContext.getActionContext("b") + ", c:" + actionContext
-                .getActionContext("c"));
+        String commodityCode = String.valueOf(actionContext.getActionContext("b"));
+        stockStore.cancel(xid);
+        System.out.println("TccActionTwo rollback, xid:" + xid + ", b:" + commodityCode + ", c:"
+            + actionContext.getActionContext("c") + ", stock:[" + stockStore.describe(commodityCode) + "]");
         ResultHolder.setActionTwoResult(xid, "R");
         return true;
     }
 
+    private final ResourceTccStore stockStore;
+
+    public TccActionTwoImpl(ResourceTccStore stockStore) {
+        this.stockStore = stockStore;
+    }
 }

@@ -1,0 +1,142 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+services:
+  seata:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/apache/seata-server:2.3.0
+    hostname: seata
+    ports:
+      - "7091:7091"
+      - "8091:8091"
+    environment:
+      SEATA_PORT: "8091"
+      STORE_MODE: file
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8091'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  mysql:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/mysql:5.7
+    hostname: mysqlAddress
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: seata
+      MYSQL_USER: user
+      MYSQL_PASSWORD: "123456"
+    volumes:
+      - ./e2e-files/sqlsh:/docker-entrypoint-initdb.d
+    networks:
+      default:
+        aliases:
+          - mysqlAddress
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  springboot-feign-seata-account:
+    build:
+      context: .
+      args:
+        MODULE: springboot-feign-seata-account
+        JAR_NAME: springboot-feign-seata-account
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+    environment:
+      E2E_ENV: open
+      mysql.address: mysqlAddress
+      mysql.user: user
+      mysql.password: "123456"
+      seata.address: seata
+    restart: on-failure
+
+  springboot-feign-seata-storage:
+    build:
+      context: .
+      args:
+        MODULE: springboot-feign-seata-storage
+        JAR_NAME: springboot-feign-seata-storage
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+    environment:
+      E2E_ENV: open
+      mysql.address: mysqlAddress
+      mysql.user: user
+      mysql.password: "123456"
+      seata.address: seata
+    restart: on-failure
+
+  springboot-feign-seata-order:
+    build:
+      context: .
+      args:
+        MODULE: springboot-feign-seata-order
+        JAR_NAME: springboot-feign-seata-order
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      springboot-feign-seata-account:
+        condition: service_started
+    environment:
+      E2E_ENV: open
+      mysql.address: mysqlAddress
+      mysql.user: user
+      mysql.password: "123456"
+      seata.address: seata
+      account.address: springboot-feign-seata-account:8083
+    restart: on-failure
+
+  springboot-feign-seata-business:
+    build:
+      context: .
+      args:
+        MODULE: springboot-feign-seata-business
+        JAR_NAME: springboot-feign-seata-business
+    ports:
+      - "8084:8084"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      springboot-feign-seata-account:
+        condition: service_started
+      springboot-feign-seata-storage:
+        condition: service_started
+      springboot-feign-seata-order:
+        condition: service_started
+    environment:
+      E2E_ENV: open
+      mysql.address: mysqlAddress
+      mysql.user: user
+      mysql.password: "123456"
+      seata.address: seata
+      order.address: springboot-feign-seata-order:8082
+      storage.address: springboot-feign-seata-storage:8081
+    restart: on-failure
+

@@ -47,10 +47,12 @@ public class TccConsumerStarter {
     }
 
     private static void transactionCommitDemo() throws InterruptedException {
+        System.out.println("before commit: " + tccTransactionService.snapshot());
+        int[] accountBefore = tccTransactionService.readAccount();
+        int[] stockBefore = tccTransactionService.readStock();
         String txId = tccTransactionService.doTransactionCommit();
         System.out.println(txId);
-//        //wait commit
-//        Thread.sleep(3000);
+        tccTransactionService.assertConfirmed(accountBefore, stockBefore);
 
         Assert.isTrue(StringUtils.isNotEmpty(txId), "事务开启失败");
 
@@ -62,12 +64,23 @@ public class TccConsumerStarter {
     }
 
     private static void transactionRollbackDemo() throws InterruptedException {
+        int[] accountBefore = tccTransactionService.readAccount();
+        int[] stockBefore = tccTransactionService.readStock();
         try {
             tccTransactionService.doTransactionRollback();
             Assert.isTrue(false, "分布式事务未回滚");
         } catch (Throwable t) {
-            Assert.isTrue(true, "分布式事务异常回滚");
+            if (!hasMessage(t, "transaction rollback")) {
+                if (t instanceof RuntimeException) {
+                    throw (RuntimeException) t;
+                }
+                if (t instanceof Error) {
+                    throw (Error) t;
+                }
+                throw new RuntimeException(t);
+            }
         }
+        tccTransactionService.assertCancelled(accountBefore, stockBefore);
 
 //        //wait rollback
 //        Thread.sleep(3000);
@@ -77,5 +90,14 @@ public class TccConsumerStarter {
             writeE2EResFile(res, "rollback.yaml");
         }
         System.out.println("transaction rollback demo finish.");
+    }
+
+    private static boolean hasMessage(Throwable error, String expected) {
+        for (Throwable cursor = error; cursor != null; cursor = cursor.getCause()) {
+            if (cursor.getMessage() != null && cursor.getMessage().contains(expected)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

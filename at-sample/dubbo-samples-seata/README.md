@@ -15,6 +15,37 @@
     limitations under the License.
 -->
 
+# dubbo-samples-seata
+
+## What
+
+An AT purchase split into Dubbo applications: business, stock, order, and account. The API module holds the service interfaces. Business starts the global transaction. Stock, order, and account each update MySQL. Commit and rollback are two HTTP calls.
+
+## Why
+
+This is the Dubbo-native layout of the same purchase used by `springboot-dubbo-seata`: a separate API jar, Spring Boot applications, and Seata's Dubbo filter moving the XID. The difference you will exercise is the registry. A local run uses multicast. Compose cannot route multicast across the bridge, so it switches the registry to ZooKeeper.
+
+## How
+
+`TestController` on business port `9999` is the entry. Defaults are `userId=ACC_001`, `commodityCode=STOCK_001`, and `orderCount=1`.
+
+- `GET /test/commit` calls `purchaseCommit`. Stock is deducted and the order is created. The method returns, and Seata commits the AT branches.
+- `GET /test/rollback` calls `purchaseRollback`. The same remote calls run, then the method throws `purchase rollback!`. Seata rolls the branches back.
+
+Both methods are `@GlobalTransactional(timeoutMills = 300000, name = "dubbo-samples-seata")`.
+
+### Code points
+
+- `BusinessServiceImpl` injects `StockService` and `OrderService` with `@DubboReference(check = false)`. The Seata Dubbo filter copies `RootContext` onto the RPC call, so each provider logs the same XID.
+- `OrderServiceImpl.create` prices the order at `200 * orderCount`, debits the account through Dubbo, and inserts `order_tbl`. Account is a third AT branch. The provider data sources are proxied by `seata-spring-boot-starter`, and each branch writes `undo_log` in the `seata` schema.
+- `application.yml` sets `dubbo.registry.address` to `multicast://224.5.6.7:1234` and `seata.service.grouplist.default` to `${seata.address:127.0.0.1}:${seata.port:8091}`. Leave the YAML as it is for a local multicast run.
+- Compose sets `DUBBO_REGISTRY_ADDRESS=zookeeper://zookeeper:2181`. Spring maps that variable onto `dubbo.registry.address`, so the containers register with ZooKeeper instead of multicast. It also points the Seata client at `seata:8091`.
+- Dubbo protocol ports in the YAML are account `20881`, business `20882`, order `20883`, and stock `20884`. The HTTP port you call is `9999`.
+
+The sections below are the original local quick start: database scripts, process start order, and the curl examples.
+
+---
+
 在Dubbo中可以使用Seata来实现分布式事务功能
 
 ## 开始之前

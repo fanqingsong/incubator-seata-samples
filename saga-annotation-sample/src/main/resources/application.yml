@@ -23,7 +23,7 @@ seata:
     vgroup-mapping:
       default_tx_group: default
     grouplist:
-      default: 127.0.0.1:8091
+      default: ${SEATA_SERVER_ADDR:127.0.0.1:8091}
     disable-global-transaction: false
   config:
     type: file
