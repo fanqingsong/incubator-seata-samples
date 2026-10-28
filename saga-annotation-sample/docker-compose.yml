@@ -52,6 +52,8 @@ services:
   zookeeper:
     image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/zookeeper:3.8.4
     hostname: zookeeper
+    environment:
+      ZOO_4LW_COMMANDS_WHITELIST: "ruok,srvr"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/2181; echo ruok >&3; timeout 2 cat <&3 | grep imok'"]
       interval: 5s
