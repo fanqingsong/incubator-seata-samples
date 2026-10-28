@@ -27,8 +27,10 @@
   <name>spring-dubbo-seata-tcc</name>
   <url>http://maven.apache.org</url>
     <modules>
+      <module>spring-dubbo-seata-tcc-common</module>
+      <module>spring-dubbo-seata-tcc-payment</module>
+      <module>spring-dubbo-seata-tcc-stock</module>
       <module>spring-dubbo-seata-tcc-consumer</module>
-      <module>spring-dubbo-seata-tcc-provider</module>
     </modules>
 
     <properties>

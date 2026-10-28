@@ -30,6 +30,11 @@
     <description>spring-dubbo-seata-tcc-consumer</description>
 
     <dependencies>
+        <dependency>
+            <groupId>org.apache.seata</groupId>
+            <artifactId>spring-dubbo-seata-tcc-common</artifactId>
+            <version>2.3.0</version>
+        </dependency>
         <!-- log dependency start -->
         <dependency>
             <groupId>org.slf4j</groupId>

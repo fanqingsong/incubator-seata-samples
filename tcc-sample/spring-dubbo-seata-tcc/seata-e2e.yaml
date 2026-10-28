@@ -39,7 +39,9 @@ e2e:
               condition: service_started
             mysql:
               condition: service_healthy
-            spring-dubbo-seata-tcc-provider:
+            spring-dubbo-seata-tcc-payment:
+              condition: service_started
+            spring-dubbo-seata-tcc-stock:
               condition: service_started
           environment:
             seata.address: seata
@@ -50,9 +52,27 @@ e2e:
             E2E_ENV: open
     # provider service
     providers:
-      - name: spring-dubbo-seata-tcc-provider
+      - name: spring-dubbo-seata-tcc-payment
         docker_service:
-          hostname: spring-dubbo-seata-tcc-provider
+          hostname: spring-dubbo-seata-tcc-payment
+          restart: on-failure
+          depends_on:
+            seata-server:
+              condition: service_started
+            zookeeper:
+              condition: service_healthy
+            mysql:
+              condition: service_healthy
+          environment:
+            seata.address: seata
+            zookeeper.address: zookeeper
+            mysql.address: mysqlAddress
+            mysql.user: user
+            mysql.password: "123456"
+            E2E_ENV: open
+      - name: spring-dubbo-seata-tcc-stock
+        docker_service:
+          hostname: spring-dubbo-seata-tcc-stock
           restart: on-failure
           depends_on:
             seata-server:
@@ -79,7 +99,7 @@ e2e:
           restart: always
           environment:
             MYSQL_ROOT_PASSWORD: "123456"
-            MYSQL_DATABASE: tcc_account
+            MYSQL_DATABASE: tcc_payment
             MYSQL_USER: user
             MYSQL_PASSWORD: "123456"
           healthcheck:
@@ -113,7 +133,9 @@ e2e:
     - source: e2e-replace/file.conf
       dest: spring-dubbo-seata-tcc-consumer/src/main/resources/file.conf
     - source: e2e-replace/file.conf
-      dest: spring-dubbo-seata-tcc-provider/src/main/resources/file.conf
+      dest: spring-dubbo-seata-tcc-payment/src/main/resources/file.conf
+    - source: e2e-replace/file.conf
+      dest: spring-dubbo-seata-tcc-stock/src/main/resources/file.conf
 
   # cases to verify
   cases:

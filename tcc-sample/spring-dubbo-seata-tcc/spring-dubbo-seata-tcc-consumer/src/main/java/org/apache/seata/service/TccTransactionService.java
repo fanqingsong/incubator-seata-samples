@@ -16,8 +16,8 @@
  */
 package org.apache.seata.service;
 
-import org.apache.seata.action.TccActionOne;
-import org.apache.seata.action.TccActionTwo;
+import org.apache.seata.action.TccActionPayment;
+import org.apache.seata.action.TccActionStock;
 import org.apache.seata.core.context.RootContext;
 import org.apache.seata.action.ResultHolder;
 import org.apache.seata.spring.annotation.GlobalTransactional;
@@ -33,9 +33,9 @@ import java.util.List;
  */
 public class TccTransactionService {
 
-    private TccActionOne tccActionOne;
+    private TccActionPayment tccActionPayment;
 
-    private TccActionTwo tccActionTwo;
+    private TccActionStock tccActionStock;
 
     private TccDataReader dataReader;
 
@@ -46,29 +46,30 @@ public class TccTransactionService {
      */
     @GlobalTransactional
     public String doTransactionCommit() {
-        int[] accountBefore = dataReader.readAccount();
+        int[] paymentBefore = dataReader.readPayment();
         int[] stockBefore = dataReader.readStock();
-        //第一个TCC 事务参与者
-        boolean result = tccActionOne.prepare(null, TccDataReader.AMOUNT);
+        // payment 服务：冻结余额
+        boolean result = tccActionPayment.prepare(null, TccDataReader.AMOUNT);
         if (!result) {
-            throw new RuntimeException("TccActionOne failed.");
+            throw new RuntimeException("TccActionPayment failed.");
         }
         List<String> list = new ArrayList<>();
         list.add("c1");
         list.add(String.valueOf(TccDataReader.COUNT));
-        result = tccActionTwo.prepare(null, TccDataReader.COMMODITY_CODE, list);
+        // stock 服务：预占库存
+        result = tccActionStock.prepare(null, TccDataReader.COMMODITY_CODE, list);
         if (!result) {
-            throw new RuntimeException("TccActionTwo failed.");
+            throw new RuntimeException("TccActionStock failed.");
         }
-        assertReserved(accountBefore, stockBefore);
+        assertReserved(paymentBefore, stockBefore);
         return RootContext.getXID();
     }
 
     public void checkBranchTransaction(String xid, boolean commit) {
-        String actionOneResult = ResultHolder.getActionOneResult(xid);
-        String actionTwoResult = ResultHolder.getActionTwoResult(xid);
-        Assert.isTrue(commit ? "T".equals(actionOneResult) : "F".equals(actionOneResult), "分支事务" + (commit ? "提交" : "回滚") + "失败");
-        Assert.isTrue(commit ? "T".equals(actionTwoResult) : "F".equals(actionTwoResult), "分支事务" + (commit ? "提交" : "回滚") + "失败");
+        String actionPaymentResult = ResultHolder.getActionPaymentResult(xid);
+        String actionStockResult = ResultHolder.getActionStockResult(xid);
+        Assert.isTrue(commit ? "T".equals(actionPaymentResult) : "F".equals(actionPaymentResult), "分支事务" + (commit ? "提交" : "回滚") + "失败");
+        Assert.isTrue(commit ? "T".equals(actionStockResult) : "F".equals(actionStockResult), "分支事务" + (commit ? "提交" : "回滚") + "失败");
     }
 
     /**
@@ -76,21 +77,20 @@ public class TccTransactionService {
      */
     @GlobalTransactional
     public void doTransactionRollback() {
-        int[] accountBefore = dataReader.readAccount();
+        int[] paymentBefore = dataReader.readPayment();
         int[] stockBefore = dataReader.readStock();
-        //第一个TCC 事务参与者
-        boolean result = tccActionOne.prepare(null, TccDataReader.AMOUNT);
+        boolean result = tccActionPayment.prepare(null, TccDataReader.AMOUNT);
         if (!result) {
-            throw new RuntimeException("TccActionOne failed.");
+            throw new RuntimeException("TccActionPayment failed.");
         }
         List<String> list = new ArrayList<>();
         list.add("c1");
         list.add(String.valueOf(TccDataReader.COUNT));
-        result = tccActionTwo.prepare(null, TccDataReader.COMMODITY_CODE, list);
+        result = tccActionStock.prepare(null, TccDataReader.COMMODITY_CODE, list);
         if (!result) {
-            throw new RuntimeException("TccActionTwo failed.");
+            throw new RuntimeException("TccActionStock failed.");
         }
-        assertReserved(accountBefore, stockBefore);
+        assertReserved(paymentBefore, stockBefore);
         throw new RuntimeException("transaction rollback");
     }
 
@@ -98,43 +98,43 @@ public class TccTransactionService {
         return dataReader.snapshot();
     }
 
-    public int[] readAccount() {
-        return dataReader.readAccount();
+    public int[] readPayment() {
+        return dataReader.readPayment();
     }
 
     public int[] readStock() {
         return dataReader.readStock();
     }
 
-    public void assertConfirmed(int[] accountBefore, int[] stockBefore) {
-        int[] account = dataReader.readAccount();
+    public void assertConfirmed(int[] paymentBefore, int[] stockBefore) {
+        int[] payment = dataReader.readPayment();
         int[] stock = dataReader.readStock();
-        Assert.isTrue(account[0] == accountBefore[0] - TccDataReader.AMOUNT,
-            "Confirm 后可用余额不正确, actual=" + account[0]);
-        Assert.isTrue(account[1] == accountBefore[1], "Confirm 后冻结金额应释放, actual=" + account[1]);
+        Assert.isTrue(payment[0] == paymentBefore[0] - TccDataReader.AMOUNT,
+            "Confirm 后可用余额不正确, actual=" + payment[0]);
+        Assert.isTrue(payment[1] == paymentBefore[1], "Confirm 后冻结金额应释放, actual=" + payment[1]);
         Assert.isTrue(stock[0] == stockBefore[0] - TccDataReader.COUNT,
             "Confirm 后可用库存不正确, actual=" + stock[0]);
         Assert.isTrue(stock[1] == stockBefore[1], "Confirm 后冻结库存应释放, actual=" + stock[1]);
         System.out.println("after confirm: " + dataReader.snapshot());
     }
 
-    public void assertCancelled(int[] accountBefore, int[] stockBefore) {
-        int[] account = dataReader.readAccount();
+    public void assertCancelled(int[] paymentBefore, int[] stockBefore) {
+        int[] payment = dataReader.readPayment();
         int[] stock = dataReader.readStock();
-        Assert.isTrue(account[0] == accountBefore[0] && account[1] == accountBefore[1],
-            "Cancel 后账户未恢复, actual money=" + account[0] + ", frozen=" + account[1]);
+        Assert.isTrue(payment[0] == paymentBefore[0] && payment[1] == paymentBefore[1],
+            "Cancel 后支付未恢复, actual money=" + payment[0] + ", frozen=" + payment[1]);
         Assert.isTrue(stock[0] == stockBefore[0] && stock[1] == stockBefore[1],
             "Cancel 后库存未恢复, actual count=" + stock[0] + ", frozen=" + stock[1]);
         System.out.println("after cancel: " + dataReader.snapshot());
     }
 
-    private void assertReserved(int[] accountBefore, int[] stockBefore) {
-        int[] account = dataReader.readAccount();
+    private void assertReserved(int[] paymentBefore, int[] stockBefore) {
+        int[] payment = dataReader.readPayment();
         int[] stock = dataReader.readStock();
-        Assert.isTrue(account[0] == accountBefore[0] - TccDataReader.AMOUNT,
-            "Try 后可用余额未扣减, actual=" + account[0]);
-        Assert.isTrue(account[1] == accountBefore[1] + TccDataReader.AMOUNT,
-            "Try 后冻结金额不正确, actual=" + account[1]);
+        Assert.isTrue(payment[0] == paymentBefore[0] - TccDataReader.AMOUNT,
+            "Try 后可用余额未扣减, actual=" + payment[0]);
+        Assert.isTrue(payment[1] == paymentBefore[1] + TccDataReader.AMOUNT,
+            "Try 后冻结金额不正确, actual=" + payment[1]);
         Assert.isTrue(stock[0] == stockBefore[0] - TccDataReader.COUNT,
             "Try 后可用库存未扣减, actual=" + stock[0]);
         Assert.isTrue(stock[1] == stockBefore[1] + TccDataReader.COUNT,
@@ -143,21 +143,21 @@ public class TccTransactionService {
     }
 
     /**
-     * Sets tcc action one.
+     * Sets the payment action.
      *
-     * @param tccActionOne the tcc action one
+     * @param tccActionPayment the payment action
      */
-    public void setTccActionOne(TccActionOne tccActionOne) {
-        this.tccActionOne = tccActionOne;
+    public void setTccActionPayment(TccActionPayment tccActionPayment) {
+        this.tccActionPayment = tccActionPayment;
     }
 
     /**
-     * Sets tcc action two.
+     * Sets the stock action.
      *
-     * @param tccActionTwo the tcc action two
+     * @param tccActionStock the stock action
      */
-    public void setTccActionTwo(TccActionTwo tccActionTwo) {
-        this.tccActionTwo = tccActionTwo;
+    public void setTccActionStock(TccActionStock tccActionStock) {
+        this.tccActionStock = tccActionStock;
     }
 
     public void setDataReader(TccDataReader dataReader) {

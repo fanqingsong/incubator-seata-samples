@@ -44,7 +44,7 @@ Images are pulled with the prefix `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/dock
 | `at-sample/spring-dubbo-seata` | Dubbo AT, MySQL, ZooKeeper. | Business service runs the purchase flow. |
 | `at-sample/springboot-dubbo-seata` | Spring Boot Dubbo AT, MySQL, ZooKeeper. | `curl localhost:9991/testCommit` and `curl localhost:9991/testRollback` |
 | `at-sample/dubbo-samples-seata` | Dubbo samples AT, MySQL, ZooKeeper. | `curl localhost:9999/test/commit` and `curl localhost:9999/test/rollback` |
-| `tcc-sample/spring-dubbo-seata-tcc` | Dubbo TCC, ZooKeeper. | Consumer logs contain `transaction commit demo finish` and `transaction rollback demo finish`. |
+| `tcc-sample/spring-dubbo-seata-tcc` | Dubbo TCC. Payment and stock are separate services and databases. | Consumer logs contain `transaction commit demo finish` and `transaction rollback demo finish`. |
 | `tcc-sample/springboot-sofarpc-seata-tcc` | SOFARPC TCC. ZooKeeper is embedded in the app. | Logs contain `transaction commit demo finish` and `transaction rollback demo finish`. |
 | `xa-sample/springboot-feign-seata-xa` | Spring Cloud Feign XA, MySQL. | `curl localhost:8084/test/commit` and `curl localhost:8084/test/rollback` |
 

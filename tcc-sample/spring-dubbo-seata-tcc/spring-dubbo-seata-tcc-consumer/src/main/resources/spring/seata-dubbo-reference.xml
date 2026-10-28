@@ -40,32 +40,32 @@
 
     <dubbo:provider timeout="10000" threads="10" threadpool="fixed" loadbalance="roundrobin"/>
 
-    <!-- 第一个TCC参与者 服务订阅 -->
-    <dubbo:reference id="tccActionOne" interface="org.apache.seata.action.TccActionOne" check="false"
+    <!-- payment 服务：冻结 payment_tbl -->
+    <dubbo:reference id="tccActionPayment" interface="org.apache.seata.action.TccActionPayment" check="false"
                      lazy="true"/>
 
-    <!-- 第二个TCC参与者 服务订阅 -->
-    <dubbo:reference id="tccActionTwo" interface="org.apache.seata.action.TccActionTwo" check="false"
+    <!-- stock 服务：预占 stock_tbl -->
+    <dubbo:reference id="tccActionStock" interface="org.apache.seata.action.TccActionStock" check="false"
                      lazy="true"/>
 
     <bean class="org.springframework.context.support.PropertySourcesPlaceholderConfigurer"/>
 
-    <bean id="accountDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+    <bean id="paymentDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
         <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
-        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_account?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
+        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_payment?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
         <property name="username" value="${mysql.user:user}"/>
         <property name="password" value="${mysql.password:123456}"/>
     </bean>
 
     <bean id="stockDataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
         <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
-        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_storage?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
+        <property name="url" value="jdbc:mysql://${mysql.address:127.0.0.1}:3306/tcc_stock?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;characterEncoding=utf8&amp;serverTimezone=UTC"/>
         <property name="username" value="${mysql.user:user}"/>
         <property name="password" value="${mysql.password:123456}"/>
     </bean>
 
-    <bean id="accountJdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
-        <constructor-arg ref="accountDataSource"/>
+    <bean id="paymentJdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <constructor-arg ref="paymentDataSource"/>
     </bean>
 
     <bean id="stockJdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
@@ -73,7 +73,7 @@
     </bean>
 
     <bean id="dataReader" class="org.apache.seata.service.TccDataReader" init-method="checkConnection">
-        <constructor-arg ref="accountJdbcTemplate"/>
+        <constructor-arg ref="paymentJdbcTemplate"/>
         <constructor-arg ref="stockJdbcTemplate"/>
     </bean>
 

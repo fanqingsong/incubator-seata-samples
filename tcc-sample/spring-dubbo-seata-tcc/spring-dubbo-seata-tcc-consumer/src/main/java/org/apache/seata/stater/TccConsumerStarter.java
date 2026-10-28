@@ -48,11 +48,11 @@ public class TccConsumerStarter {
 
     private static void transactionCommitDemo() throws InterruptedException {
         System.out.println("before commit: " + tccTransactionService.snapshot());
-        int[] accountBefore = tccTransactionService.readAccount();
+        int[] paymentBefore = tccTransactionService.readPayment();
         int[] stockBefore = tccTransactionService.readStock();
         String txId = tccTransactionService.doTransactionCommit();
         System.out.println(txId);
-        tccTransactionService.assertConfirmed(accountBefore, stockBefore);
+        tccTransactionService.assertConfirmed(paymentBefore, stockBefore);
 
         Assert.isTrue(StringUtils.isNotEmpty(txId), "事务开启失败");
 
@@ -64,7 +64,7 @@ public class TccConsumerStarter {
     }
 
     private static void transactionRollbackDemo() throws InterruptedException {
-        int[] accountBefore = tccTransactionService.readAccount();
+        int[] paymentBefore = tccTransactionService.readPayment();
         int[] stockBefore = tccTransactionService.readStock();
         try {
             tccTransactionService.doTransactionRollback();
@@ -80,7 +80,7 @@ public class TccConsumerStarter {
                 throw new RuntimeException(t);
             }
         }
-        tccTransactionService.assertCancelled(accountBefore, stockBefore);
+        tccTransactionService.assertCancelled(paymentBefore, stockBefore);
 
 //        //wait rollback
 //        Thread.sleep(3000);

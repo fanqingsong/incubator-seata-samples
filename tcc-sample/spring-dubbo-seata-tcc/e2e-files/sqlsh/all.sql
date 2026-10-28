@@ -15,17 +15,17 @@
  * limitations under the License.
  */
 
--- Two schemas stand in for two resource managers. TCC does not use undo_log.
-CREATE DATABASE IF NOT EXISTS tcc_account DEFAULT CHARACTER SET utf8mb4;
-CREATE DATABASE IF NOT EXISTS tcc_storage DEFAULT CHARACTER SET utf8mb4;
+-- Two schemas, one per Dubbo service. TCC does not use undo_log.
+CREATE DATABASE IF NOT EXISTS tcc_payment DEFAULT CHARACTER SET utf8mb4;
+CREATE DATABASE IF NOT EXISTS tcc_stock DEFAULT CHARACTER SET utf8mb4;
 
-GRANT ALL PRIVILEGES ON tcc_account.* TO 'user'@'%';
-GRANT ALL PRIVILEGES ON tcc_storage.* TO 'user'@'%';
+GRANT ALL PRIVILEGES ON tcc_payment.* TO 'user'@'%';
+GRANT ALL PRIVILEGES ON tcc_stock.* TO 'user'@'%';
 FLUSH PRIVILEGES;
 
-USE tcc_account;
+USE tcc_payment;
 
-CREATE TABLE IF NOT EXISTS account_tbl
+CREATE TABLE IF NOT EXISTS payment_tbl
 (
     id      INT          NOT NULL AUTO_INCREMENT,
     user_id VARCHAR(255) NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS account_tbl
     UNIQUE KEY uk_user_id (user_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
-CREATE TABLE IF NOT EXISTS account_tx
+CREATE TABLE IF NOT EXISTS payment_tx
 (
     xid     VARCHAR(128) NOT NULL,
     user_id VARCHAR(255) NOT NULL,
@@ -44,12 +44,12 @@ CREATE TABLE IF NOT EXISTS account_tx
     PRIMARY KEY (xid)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 
-INSERT INTO account_tbl (user_id, money, frozen)
+INSERT INTO payment_tbl (user_id, money, frozen)
 SELECT 'U100001', 100, 0
 FROM DUAL
-WHERE NOT EXISTS (SELECT 1 FROM account_tbl WHERE user_id = 'U100001');
+WHERE NOT EXISTS (SELECT 1 FROM payment_tbl WHERE user_id = 'U100001');
 
-USE tcc_storage;
+USE tcc_stock;
 
 CREATE TABLE IF NOT EXISTS stock_tbl
 (

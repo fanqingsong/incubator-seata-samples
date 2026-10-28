@@ -19,7 +19,7 @@ package org.apache.seata.service;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Reads the two resource schemas from the transaction initiator.
+ * Reads payment and stock from the transaction initiator.
  * The initiator does not join the TCC branches; it only observes committed rows.
  */
 public class TccDataReader {
@@ -32,23 +32,23 @@ public class TccDataReader {
 
     public static final int COUNT = 2;
 
-    private final JdbcTemplate accountJdbc;
+    private final JdbcTemplate paymentJdbc;
 
     private final JdbcTemplate stockJdbc;
 
-    public TccDataReader(JdbcTemplate accountJdbc, JdbcTemplate stockJdbc) {
-        this.accountJdbc = accountJdbc;
+    public TccDataReader(JdbcTemplate paymentJdbc, JdbcTemplate stockJdbc) {
+        this.paymentJdbc = paymentJdbc;
         this.stockJdbc = stockJdbc;
     }
 
     public void checkConnection() {
-        accountJdbc.queryForObject("SELECT 1", Integer.class);
+        paymentJdbc.queryForObject("SELECT 1", Integer.class);
         stockJdbc.queryForObject("SELECT 1", Integer.class);
     }
 
-    public int[] readAccount() {
-        return accountJdbc.queryForObject(
-            "SELECT money, frozen FROM account_tbl WHERE user_id = ?",
+    public int[] readPayment() {
+        return paymentJdbc.queryForObject(
+            "SELECT money, frozen FROM payment_tbl WHERE user_id = ?",
             (rs, rowNum) -> new int[] {rs.getInt(1), rs.getInt(2)}, USER_ID);
     }
 
@@ -59,9 +59,9 @@ public class TccDataReader {
     }
 
     public String snapshot() {
-        int[] account = readAccount();
+        int[] payment = readPayment();
         int[] stock = readStock();
-        return "account " + USER_ID + " money=" + account[0] + " frozen=" + account[1]
+        return "payment " + USER_ID + " money=" + payment[0] + " frozen=" + payment[1]
             + "; stock " + COMMODITY_CODE + " count=" + stock[0] + " frozen=" + stock[1];
     }
 }

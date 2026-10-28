@@ -35,7 +35,7 @@ services:
     hostname: mysql
     environment:
       MYSQL_ROOT_PASSWORD: "123456"
-      MYSQL_DATABASE: tcc_account
+      MYSQL_DATABASE: tcc_payment
       MYSQL_USER: user
       MYSQL_PASSWORD: "123456"
     volumes:
@@ -59,12 +59,34 @@ services:
       retries: 20
       start_period: 15s
 
-  spring-dubbo-seata-tcc-provider:
+  spring-dubbo-seata-tcc-payment:
     build:
       context: .
       args:
-        MODULE: spring-dubbo-seata-tcc-provider
-        JAR_NAME: spring-dubbo-seata-tcc-provider
+        MODULE: spring-dubbo-seata-tcc-payment
+        JAR_NAME: spring-dubbo-seata-tcc-payment
+    depends_on:
+      mysql:
+        condition: service_healthy
+      seata:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+    environment:
+      E2E_ENV: open
+      mysql.address: mysql
+      mysql.user: user
+      mysql.password: "123456"
+      zookeeper.address: zookeeper
+      seata.address: seata
+    restart: on-failure
+
+  spring-dubbo-seata-tcc-stock:
+    build:
+      context: .
+      args:
+        MODULE: spring-dubbo-seata-tcc-stock
+        JAR_NAME: spring-dubbo-seata-tcc-stock
     depends_on:
       mysql:
         condition: service_healthy
@@ -94,7 +116,9 @@ services:
         condition: service_healthy
       zookeeper:
         condition: service_healthy
-      spring-dubbo-seata-tcc-provider:
+      spring-dubbo-seata-tcc-payment:
+        condition: service_started
+      spring-dubbo-seata-tcc-stock:
         condition: service_started
     environment:
       E2E_ENV: open
